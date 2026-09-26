@@ -1,0 +1,259 @@
+% !TEX program = xelatex
+% ============================================================
+%  Data Lab 实验报告
+%  作者：庞岩松  2025201810
+%
+%  编译方式（中文必须用 XeLaTeX，连跑两遍）：
+%      xelatex report.tex
+%      xelatex report.tex
+%
+%  目录要求（与 report/README.md 一致）：
+%      report/
+%        ├── report.tex
+%        ├── report.pdf
+%        └── imgs/
+%              └── test.png
+%  注意：report.tex 与 imgs/ 必须在同一层目录下，否则 \includegraphics 找不到图。
+% ============================================================
+\documentclass[11pt, a4paper]{ctexart}
+
+\usepackage{geometry}
+\geometry{left=2.4cm, right=2.4cm, top=2.5cm, bottom=2.5cm}
+
+\usepackage{amsmath}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{graphicx}
+\usepackage{listings}
+\usepackage{xcolor}
+\usepackage{enumitem}
+\usepackage[hidelinks]{hyperref}
+
+% ---------------- 代码样式 ----------------
+\definecolor{codebg}{RGB}{247,247,249}
+\definecolor{codekw}{RGB}{0,0,192}
+\definecolor{codecmt}{RGB}{106,153,85}
+\definecolor{codestr}{RGB}{163,21,21}
+
+\lstset{
+    basicstyle       = \ttfamily\small,
+    backgroundcolor  = \color{codebg},
+    keywordstyle     = \color{codekw}\bfseries,
+    commentstyle     = \color{codecmt}\itshape,
+    stringstyle      = \color{codestr},
+    numbers          = left,
+    numberstyle      = \tiny\color{gray},
+    numbersep        = 8pt,
+    frame            = single,
+    framesep         = 4pt,
+    rulecolor        = \color{gray!40},
+    breaklines       = true,
+    showstringspaces = false,
+    columns          = flexible,
+    tabsize          = 4,
+    xleftmargin      = 1.6em,
+    aboveskip        = 0.8em,
+    belowskip        = 0.8em,
+}
+\lstdefinestyle{c}{language=C}
+
+\renewcommand{\arraystretch}{1.25}
+
+\title{\textbf{Data Lab 实验报告}}
+\author{庞岩松 \quad 2025201810}
+\date{\today}
+
+\begin{document}
+
+\maketitle
+
+% ============================================================
+\section{成绩}
+
+\begin{table}[h]
+\centering
+\small
+\begin{tabular}{*{7}{c}}
+\toprule
+\multicolumn{7}{c}{\textbf{总分：37.00 / 37.00}} \\
+\midrule
+bitAnd & bitXor & samesign & logtwo & byteSwap & reverse & logicalShift \\
+1.00 & 1.00 & 2.00 & 4.00 & 4.00 & 3.00 & 3.00 \\
+\midrule
+leftBitCount & float\_i2f & floatScale2 & float64\_f2i & floatPower2 & & \\
+4.00 & 4.00 & 4.00 & 3.00 & 4.00 & & \\
+\bottomrule
+\end{tabular}
+\caption{各函数得分，满分 37 分}
+\end{table}
+
+% ============================================================
+\section*{test 截图}
+\addcontentsline{toc}{section}{test 截图}
+
+\begin{figure}[h]
+\centering
+\includegraphics[width=\textwidth]{test.png}
+\caption{\texttt{python3 test.py -V} 的结果，12 个函数全 PASS，总分 37，没有 warning}
+\end{figure}
+
+\clearpage
+% ============================================================
+\section{解题报告}
+
+\subsection{亮点}
+
+我觉得做得比较顺手的是这几个（括号里是实际用的操作符数量 / 上限）：
+
+\begin{enumerate}[itemsep=0.2em]
+    \item \texttt{float\_i2f}（30 / 30）—— 舍入那部分最后只用一个比较表达式就写完了
+    \item \texttt{byteSwap}（16 / 17）—— 写完才发现刚好卡进上限，挺险的
+    \item \texttt{logicalShift}（6 / 20）—— 一共就三行
+    \item \texttt{reverse}（6 / 30）—— 用 \texttt{i - 32} 替掉了不让用的 \texttt{<}
+    \item \texttt{float64\_f2i}（31 / 60）—— 移位量要分三段讨论，边界情况多一些
+\end{enumerate}
+
+% ------------------------------------------------------------
+\subsection{float\_i2f}
+
+这题我做得最久。要在一个函数里同时搞定符号、规格化、舍入和进位，操作符上限又只有 30，前后改了十几版。舍入那部分最后是这么写的：
+
+\begin{lstlisting}[style=c]
+if (lost + (frac & 1) > half) frac++;
+frac &= 0x7FFFFF;
+exp += frac >> 23;
+\end{lstlisting}
+
+大体思路是先看这个整数有多少位有效数字，确定小数点放在哪，再分别填符号位、指数位和尾数位。
+
+麻烦的是舍入。float 的尾数只有 23 位，整数的有效位数一旦超过 23，右移的时候肯定会丢东西，就得按 IEEE 754 的规则做「就近舍入、平局取偶」。我一开始写的是平铺的 \texttt{if}，判断「丢掉的部分大于一半」或者「正好等于一半而且尾数是奇数」，逻辑上没错，但操作符数量超了，而且用到的逻辑运算符还不在允许列表里。
+
+后来发现把尾数最低位直接加进比较里就能一次解决：\texttt{lost} 是丢掉的部分，\texttt{half} 是一半，尾数最低位 \texttt{frac \& 1} 在平局时刚好能起「往偶数靠」的作用。超过一半就进位，正好一半时看尾数奇偶决定。这么写操作符反而更省。
+
+进位之后尾数最高位可能被顶起来，我先用 \texttt{frac \&= 0x7FFFFF} 把它清掉，再用 \texttt{exp += frac >> 23} 看刚才是不是真溢出了、需要把指数加一。原来这里是两层嵌套的 \texttt{if}，合并成这两行之后短了不少。
+
+整数为 0 要单独提前返回，不然求最高位那步会出问题。
+
+% ------------------------------------------------------------
+\subsection{float64\_f2i}
+
+64 位浮点转 32 位整数。思路不难，但细节多。
+
+第一步是把 uf2 和 uf1 拼起来。52 位尾数加上隐含的 1 一共 53 位，一个 32 位变量塞不下，所以高低两段得分开存：
+
+\begin{lstlisting}[style=c]
+unsigned frac_high=(uf2&0xFFFFF)|0x100000;   /* 补上隐含的 1 */
+int shift=52-e_true;
+\end{lstlisting}
+
+后面按移位量 \texttt{shift} 分情况：大于等于 32 的时候结果全在高位字里；在 0 到 32 之间就把两个字各截一段拼起来；小于等于 0 说明要往左移，这时候得额外判断会不会溢出。
+
+指数真值小于 0 就直接返回 0，因为小数部分凑不出 1。
+
+符号我放在最后统一处理：负数返回 \texttt{-result}，非负数要检查有没有超过 \texttt{0x80000000}。\texttt{INT\_MIN} 是最容易漏的，它的绝对值超出了 int 正数的范围。
+
+% ------------------------------------------------------------
+\subsection{floatScale2}
+
+浮点乘 2。要点是\textbf{指数为 0 和不等于 0 得分开处理}。
+
+指数是 255 的时候是 NaN 或者 INF，题目要求直接返回原值。
+
+指数为 0 说明是非规格化数，这种数没有隐含的前导 1，把尾数左移一位就是乘 2。但左移之后第 24 位可能被顶起来，那意味着这个数刚好跨进规格化数的范围了，得把指数设成 1，再把尾数的溢出位清掉。
+
+指数非 0 的规格化数直接加一，加完看一下是不是正好涨到 255，那样结果就是 INF。
+
+符号位我一直单独存着，最后统一或回去。
+
+% ------------------------------------------------------------
+\subsection{logicalShift}
+
+题目要逻辑右移，但 C 里的 \texttt{>>} 是有符号右移，左边补的是 1，所以思路就是先照常右移，然后把多出来的那几位擦掉。用了一行掩码：
+
+\begin{lstlisting}[style=c]
+int m=~(((1<<31)>>n)<<1);
+\end{lstlisting}
+
+\texttt{1 << 31} 得到一个只有最高位是 1 的数，算术右移 $n$ 位之后高 $n+1$ 位都是 1，再左移一位就变成高 $n$ 位是 1，取反得到低 $32-n$ 位是 1，和右移结果相与正好擦掉被补进来的符号位。
+
+$n = 0$ 我单独想了一下：这时候掩码应该全是 1，一位都不擦，用上面的写法算出来确实是这样。
+
+% ------------------------------------------------------------
+\subsection{reverse}
+
+按位翻转。我的做法是逐位搬：结果每次左移腾出最低位，把原数的最低位填进去，循环 32 次就翻好了。
+
+\begin{lstlisting}[style=c]
+while (i - 32) { ... }
+\end{lstlisting}
+
+这里卡了一下。题目给的操作符列表里没有 \texttt{<}，但循环总得有个终止条件，而 \texttt{test.py} 会把循环条件里的比较符也算进去检查，所以 \texttt{i < 32} 不能用。换成 \texttt{i - 32} 就行——$i$ 到 32 的时候减出来是 0，当成假结束循环，其他时候非 0 就是真。效果一样，但用的是允许的 \texttt{-}。
+
+% ------------------------------------------------------------
+\subsection{byteSwap}
+
+交换第 $n$ 和第 $m$ 个字节。先把这两个字节分别取出来存着，然后在原数上把这两个位置挖空，最后把取出来的字节交叉移回去填上：
+
+\begin{lstlisting}[style=c]
+x = x & ~(value << n);
+x = x | (x1 << m);
+\end{lstlisting}
+
+挖空用的是 \texttt{\textasciitilde 0xFF << n} 和 \texttt{\textasciitilde 0xFF << m} 两个掩码。$n$ 和 $m$ 相等的时候两个掩码是一样的，挖完再填回去结果照样对，这点我一开始还担心会出问题。
+
+% ------------------------------------------------------------
+\subsection{logtwo}
+
+求以 2 为底的对数，其实就是在求最高位在第几位。我用区间比较来定：
+
+\begin{lstlisting}[style=c]
+shift=(v>0xFFFF)<<4;
+\end{lstlisting}
+
+每轮看当前值有没有超过 \texttt{0xFFFF}、\texttt{0xFF}、\texttt{0xF}、\texttt{0x3}、\texttt{0x1} 这五个阈值，超了就加上对应权重，并把已经确定的高位右移掉。比较运算本身返回的就是 0 或 1，正好能当权重用。
+
+有两个跟合规有关的地方：一是不能用 \texttt{!!}，因为 \texttt{!} 不在允许列表里，直接写比较就行；二是这几段的权重是 4、3、2、1、0，二进制上互不重叠，累加用 \texttt{res |= shift} 就够，不需要 \texttt{+}（\texttt{+} 也不允许）。
+
+% ------------------------------------------------------------
+\subsection{samesign}
+
+判断两个数符号是否相同。这题有个坑：题目说 0 既不算正也不算负，但 \texttt{0 >> 31} 算出来是 0，和正数一样，所以必须单独判断。
+
+\begin{lstlisting}[style=c]
+if(!x && !y) return 1;
+if (!x || !y) return 0;
+return !((x>>31)^(y>>31));
+\end{lstlisting}
+
+前两个分支处理带 0 的情况。判零我用的 \texttt{!x}，因为 \texttt{==} 不在允许列表里。剩下的情况就把两个数都右移 31 位取出符号位，异或一下再取非，相同就是 1。
+
+% ------------------------------------------------------------
+\subsection{其余几个}
+
+\begin{itemize}[itemsep=0.3em]
+    \item \textbf{bitAnd / bitXor}（4、7 ops）：都用德摩根定律。与写成 \texttt{\textasciitilde(\textasciitilde x | \textasciitilde y)}；异或是 \texttt{(x \& \textasciitilde y) | (\textasciitilde x \& y)}，但这里又出现一个不合法的 \texttt{|}，所以再用一次德摩根换掉
+    \item \textbf{leftBitCount}（33 / 50）：和 logtwo 是反着来的。先用 \texttt{!(\textasciitilde x >> 16)} 看高 16 位是不是全 1，是的话计数加 16 并把已经确认的高位左移丢掉，然后按 16、8、4、2、1 逐级收窄
+    \item \textbf{floatPower2}（12 / 30）：把指数 $x$ 按大小分成四段——大于 127 返回 +INF，小于 $-149$ 返回 0，$[-149,-127]$ 是非规格化区间返回 \texttt{1 << (x+149)}，剩下的规格化区间返回 \texttt{(x+127) << 23}
+\end{itemize}
+
+% ============================================================
+\section{反馈 / 收获 / 感悟 / 总结}
+
+通过本次实验，我对数据的二进制表示有了更直观的认识。整数部分加深了对补码与位移运算的理解；浮点部分则系统梳理了符号位、指数位和尾数的划分方式，以及规格化数、非规格化数与舍入规则的处理逻辑，对 IEEE 754 标准的实际应用有了更具体的体会。
+
+操作符的限制是本次实验的主要约束。在只能使用有限几种位运算的前提下，实现思路需要反复调整，这在一定程度上加深了我对运算本质的理解，也让我意识到简洁的实现往往依赖于对问题更准确的抽象。
+
+此外，实验中还需兼顾测试脚本的合规性要求，即代码除逻辑正确外，还须满足操作符种类与数量上的限制。这提醒我在完成实验时不能只关注结果，也要留意实现方式的规范性。
+
+总体而言，本次实验工作量较大，浮点数相关题目难度偏高，但正是这部分内容让我对底层的数据表示有了更扎实的掌握。
+
+% ============================================================
+\section{参考的重要资料}
+
+\begin{itemize}[itemsep=0.3em]
+    \item 《深入理解计算机系统》第 2 章，整数表示和 IEEE 754 浮点那部分
+    \item Data Lab 的实验手册，关于操作符限制和判分规则的说明
+    \item GitHub 上 RUCICS 的模板仓库：\url{https://github.com/RUCICS/Datalab-2025Fall}
+\end{itemize}
+
+\end{document}
